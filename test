@@ -1,0 +1,81 @@
+import requests
+from urllib.request import urlretrieve,urljoin
+import re,json,os,time
+import glob,fitz
+
+"""爬取原创力文档内容，并转存为PDF格式"""
+
+def get_params(url,headers):
+
+	res = requests.get(url=url,headers=headers)
+	dict1={}
+	dict1["title"] = re.findall("<title>(.*)</title>",res.text)[0]
+	dict1["aid"] = re.findall("aid: (.*), //解密后的id",res.text)[0]
+	dict1["view_token"] = re.findall("view_token: (.*) //预览的token",res.text)[0]
+	dict1["page"] = re.findall("actual_page: (.*), //真实页数",res.text)[0]
+	return dict1
+
+def get_imgs(headers,title,aid,view_token,page,img_path):
+
+	url = "https://openapi.book118.com/getPreview.html"
+	data = {
+		"project_id": 1,
+		"aid": aid,
+		"view_token": view_token,
+		"page": page
+	}
+	r = int(page)/6
+	if r >1:
+		r=int(r)
+	else:
+		r=0
+	n = 1
+	for j in range(r+1):
+		data["page"] = j*6+1
+		res = requests.get(url=url,headers=headers,params=data)
+		time.sleep(2)
+		data1 = re.findall("{.*}",res.text)[0]
+		dic1 = json.loads(data1)
+		#print(data1)
+		for i in (dic1["data"].values()):
+			img_url = urljoin("https:",i)
+			urlretrieve(img_url,img_path + rf"\{n}.png")
+			n = n + 1
+
+def img_pdf(img_path,pdf_name):
+	#打开空文档
+	doc = fitz.open()
+	for img in sorted(glob.glob(img_path + r"\*.png")):
+	    imgdoc = fitz.open(img)
+	    pdfbytes = imgdoc.convertToPDF()
+	    # 将当前文档写入pdf
+	    imgpdf = fitz.open("pdf", pdfbytes)
+	    doc.insertPDF(imgpdf)
+	    doc.save(img_path + rf"\{pdf_name}.pdf")
+	doc.close()
+
+def main(url,img_path):
+	headers = {
+		"User-Agent": "Mozilla/5.0 (Windows NT 6.1; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/92.0.4515.159 Safari/537.36"
+	}
+	dict1 = get_params(url,headers)
+	title = dict1["title"]
+	aid = dict1["aid"]
+	view_token =dict1["view_token"]
+	page = dict1["page"]
+	if os.path.exists(img_path):
+		pass
+	else:
+		os.mkdir(img_path)
+	get_imgs(headers,title,aid,view_token,page,img_path)
+	img_pdf(img_path,title)
+
+
+
+if __name__ == "__main__":
+
+	url = "https://max.book118.com/html/2018/1027/5041323214001323.shtm"
+	#url = "https://max.book118.com/html/2018/0706/6225232151001204.shtm"
+	file = int(time.time())
+	img_path = rf"statics\{file}"
+	main(url,img_path)
